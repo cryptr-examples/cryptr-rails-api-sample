@@ -24,6 +24,13 @@ module CryptrRailsApiSample
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 6.1
 
+    # Add your Cryptr config:
+    config.before_configuration do
+      ENV['CRYPTR_BASE_URL'] = 'https://auth.cryptr.eu'
+      ENV['TENANT_DOMAIN'] = 'shark-academy'
+      ENV['CRYPTR_AUDIENCE'] = 'http://localhost:8081'
+    end
+
     # Configuration for the application, engines, and railties goes here.
     #
     # These settings can be overridden in specific environments using the files
