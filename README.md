@@ -1,9 +1,12 @@
 # Cryptr with Rails API
 
-## [01 Create a Rails project](https://github.com/cryptr-examples/cryptr-rails-api-sample/tree/01-create-rails-project)
+## 01 - Configuration
 
-## [02 Add your cryptr credentials](https://github.com/cryptr-examples/cryptr-rails-api-sample/tree/02-add-your-cryptr-credentials)
+🛠️️ First, generate a new api Rails app and set up this Rails app environment by flagging it as an API with `--api`:
 
-## [03 Validate access tokens](https://github.com/cryptr-examples/cryptr-rails-api-sample/tree/03-validate-access-tokens)
+```bash
+rails new cryptr-rails-api-sample --api
+cd cryptr-rails-api-sample
+```
 
-## [04 Protect API Endpoints](https://github.com/cryptr-examples/cryptr-rails-api-sample/tree/04-protect-api-endpoints)
+[Next](https://github.com/cryptr-examples/cryptr-rails-api-sample/tree/02-add-your-cryptr-credentials)
