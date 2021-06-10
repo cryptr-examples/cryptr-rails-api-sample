@@ -1,6 +1,8 @@
 class ApiV1Controller < ApplicationController
- 
+  # 1. Add Secured concern
+  include Secured
   before_action :set_access_control_headers
+  
   def index
     render json: [
       {
@@ -19,6 +21,16 @@ class ApiV1Controller < ApplicationController
         }
       }
     ]
+  end
+
+  # 2. Add options method
+  def options
+  Rails.logger.info "option request"
+    if ENV['CRYPTR_AUDIENCE'] == request.env['HTTP_ORIGIN']
+      :ok
+    else
+      :forbidden
+    end
   end
   
   private

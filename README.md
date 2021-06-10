@@ -1,216 +1,19 @@
 # Cryptr with Rails API
 
-## 03 - Validate Access Token
+## 04 - Protect API Endpoints
 
-### Install dependencies
+### Include the secured concern and the options method
 
-🛠️️ Open up `Gemfile` and add this gem:
+The protected endpoints need to include the `secured` concern and the `options` method (which handles `CORS` from the client App).
 
-`gem 'jwt'`
-
-```ruby
-source 'https://rubygems.org'
-git_source(:github) { |repo| "https://github.com/#{repo}.git" }
- 
-ruby '2.7.1'
-# Add this gem:
-gem 'jwt'
-# ...
-```
-
-🛠️️ Open your terminal and type this command:
-
-```bash
-bundle install
-```
-
-### JsonWebToken
-
-🛠️️ Create `JsonWebToken` file in the lib folder
-
-```bash
-touch lib/json_web_token.rb
-```
-
-🛠️️ Now open up `lib/json_web_token.rb` and add the following code:
-
-```ruby
-#frozen_string_literal: true
-require 'net/http'
-require 'uri'
- 
-class JsonWebToken
-  def self.verify(token)
-    puts jwks_hash.count
-    token_decode = jwks_hash.map do |kid, key|
-      begin
-        verify_token_with_key(token, key, kid)
-      rescue JWT::VerificationError, JWT::DecodeError => e
-        Rails.logger.info "failed with kid #{kid}: #{e}"
-        nil
-      end
-    end
-    token_decode.compact.first
-  end
-  
-  def self.verify_token_with_key(token, key, kid)
-    decoded = JWT.decode(token, key,
-            true,
-            algorithms: 'RS256',
-            verify_iat: true,
-            verify_jti: true,
-            iss: issuer,
-            verify_iss: true,
-            aud: ENV['CRYPTR_AUDIENCE'],
-            verify_aud: true)
-    payload, header = decoded
-    if header["kid"] == kid
-      decoded
-    end
-  end
-    def self.jwks_hash
-    jwks_raw = Net::HTTP.get jwks_uri
-    jwks_keys = Array(JSON.parse(jwks_raw)['keys'])
-    Hash[
-      jwks_keys
-      .map do |k|
-        [
-          k['kid'],
-          OpenSSL::X509::Certificate.new(
-            Base64.decode64(k['x5c'].first)
-          ).public_key
-        ]
-      end
-    ]
-  end
-  
-  def self.issuer
-    "#{ENV['CRYPTR_BASE_URL']}/t/#{ENV['TENANT_DOMAIN']}"
-  end
-    def self.jwks_uri
-    URI("#{issuer}/.well-known")
-  end
-end
-```
-
-👀 Let's take a quick look at this file so that you can see how it works:
-
-- The public key is fetched in `jwks_hash`
-- The fetched token is verified with `decoded` param
-- The header token is compared with the fetched key
-
-🛠️️ Now open up `config/application.rb` and add this line to load the lib folder files:
-
-`config.eager_load_paths << Rails.root.join("lib")`
-
-```ruby {6}
-module CryptrRailsApiSample
-  class Application < Rails::Application
-    # Initialize configuration defaults for originally generated Rails version.
-    config.load_defaults 6.1
-  
-    # Add your Cryptr config:
-    config.before_configuration do
-      ENV['CRYPTR_BASE_URL'] = 'https://auth.cryptr.eu'
-      ENV['TENANT_DOMAIN'] = 'shark-academy'
-      ENV['CRYPTR_AUDIENCE'] = 'http://localhost:8081'
-    end
-    # Configuration for the application, engines, and railties goes here.
-    #
-    # These settings can be overridden in specific environments using the files
-    # in config/environments, which are processed later.
-    #
-    # config.time_zone = "Central Time (US & Canada)"
-    # config.eager_load_paths << Rails.root.join("extras")
-  
-    # Load lib folder files  
-    config.eager_load_paths << Rails.root.join("lib")
-  
-    # Only loads a smaller set of middleware suitable for API only apps.
-    # Middleware like session, flash, cookies can be added back manually.
-    # Skip views, helpers and assets when generating a new resource.
-    config.api_only = true
-  end
-end
-```
-
-Note: __We need to load the files from the lib folder because the file was not designed by rails, we must let it know that it can read it.__
-
-### Define a Secured concern
-
-🛠️️ Create these files in the `app/controllers/concerns` folder:
-
-```bash
-touch app/controllers/concerns/secured.rb
-```
-
-🛠️️ Now open up the secured file in `app/controllers/concerns/secured.rb` and paste in the following code:
-
-```ruby
-#frozen_string_literal: true
-module Secured
-  extend ActiveSupport::Concern
-  
-  included do
-    before_action :authenticate_request!, except: :options
-  end
-  
-  private
-  
-  def authenticate_request!
-    auth_payload, auth_header = auth_token
-  
-    if auth_payload === nil || auth_header === nil
-      render json: { error: ['Not authenticated'] }, status: :unauthorized
-    end
-  end
-  
-  def http_token
-    if request.headers['Authorization'].present?
-      request.headers['Authorization'].split(' ').last
-    end
-  end
-  
-  def auth_token
-    puts http_token
-    JsonWebToken.verify(http_token)
-  end
-end
-```
-
-This file will check the token in the `Authorization` headers:
-
-- if the token is not present, it is unauthorized.  
-- if the token is present, it is passed to the `JsonWebToken.verify`
-
-Scope: __Thanks to the `auth_payload`, you can refine the request with scopes__
-
-```ruby
-def authenticate_request!
-  auth_payload, auth_header = auth_token
-
-  if auth_payload === nil || auth_header === nil
-    render json: { error: ['Not authenticated'] }, status: :unauthorized
-  # Handle scope checking
-  elsif auth_paylaod["scp"] !== ["openid" ....]
-    render json: { error: ['Insufficient scope'] }, status: :unauthorized
-  end
-end
-```
-
-### Render Courses
-
-🛠️️ Create a controller to render courses in `app/controllers`, it’s an api controller where index returns courses:
-
-```bash
-touch app/controllers/api_v1_controller.rb
-```
-
-🛠️️ Next, open up the api controller file in `app/controllers/api_v1_controller.rb` and paste in the following code:
+🛠️️ Open up `app/controllers/api_v1_controller.rb` and add `include Secured`:
 
 ```ruby
 class ApiV1Controller < ApplicationController
- 
+  # 1. Add Secured concern
+  include Secured
+  before_action :set_access_control_headers
+
   def index
     render json: [
       {
@@ -230,25 +33,18 @@ class ApiV1Controller < ApplicationController
       }
     ]
   end
-  
-  private
-  
-  def set_access_control_headers
-    headers['Access-Control-Allow-Origin'] = ENV['CRYPTR_AUDIENCE']
-    headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
-    headers['Access-Control-Max-Age'] = '1000'
-    headers['Access-Control-Allow-Headers'] = '*,x-requested-with'
-  end
-end
+# ...
 ```
 
-🛠️️ Call the `set_access_control_headers` function in the `before_action` [callback](https://api.rubyonrails.org/classes/AbstractController/Callbacks/ClassMethods.html#method-i-before_action), all actions of the controller will inherit it. This will cause the `set_access_control_headers` function (which allows you to manage the cors) to be executed before each action of the controller.
+🛠️️ Now, add the `options` method:
 
 ```ruby
 class ApiV1Controller < ApplicationController
- 
- before_action :set_access_control_headers
- def index
+
+  include Secured
+  before_action :set_access_control_headers
+
+  def index
     render json: [
       {
         "id" => 1,
@@ -266,23 +62,95 @@ class ApiV1Controller < ApplicationController
         }
       }
     ]
- end
- 
-# ...
-```
+  end
 
-🛠️️ Now, open up `config/routes.rb` and copy paste this code to associate the controller with the routes:
-
-```ruby
-Rails.application.routes.draw do
-  get "/api/v1/courses", to: 'api_v1#index'
-  options "/api/v1/courses", to: 'api_v1#options'
-  # For details on the DSL available within this file, see https://guides.rubyonrails.org/routing.html
+  # 2. Add options method
+  def options
+  Rails.logger.info "option request"
+    if ENV['CRYPTR_AUDIENCE'] == request.env['HTTP_ORIGIN']
+      :ok
+    else
+      :forbidden
+    end
+  end
+  
+  private
+  
+  def set_access_control_headers
+    headers['Access-Control-Allow-Origin'] = ENV['CRYPTR_AUDIENCE']
+    headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+    headers['Access-Control-Max-Age'] = '1000'
+    headers['Access-Control-Allow-Headers'] = '*,x-requested-with'
+  end
 end
 ```
 
-We can retrieve the response using a HTTP `GET` request on `http://localhost:3000/api/v1/courses`
+### Test with a Cryptr Vue app
 
-🛠️️ Run the server with the command `rails s` and open **insomnia** or **postman** to make a `GET` request which should end with `200`
+It is now time to try this on an application. For this purpose, we have an example app on Vue.
 
-[Next](https://github.com/cryptr-examples/cryptr-rails-api-sample/tree/04-protect-api-endpoints)
+🛠 Run your code with `rails s`
+
+🛠 Clone our `cryptr-vue-sample`:
+
+```bash
+git clone --branch 07-backend-courses-api https://github.com/cryptr-examples/cryptr-vue2-sample.git
+```
+
+🛠 Install the Vue project dependencies with `yarn`
+
+🛠️️  Create the `.env.local` file and add your variables. Don't forget to replace `YOUR_CLIENT_ID` & `YOUR_DOMAIN`:
+
+```typescript
+VUE_APP_AUDIENCE=http://localhost:8080
+VUE_APP_CLIENT_ID=YOUR_CLIENT_ID
+VUE_APP_DEFAULT_LOCALE=fr
+VUE_APP_DEFAULT_REDIRECT_URI=http://localhost:8080
+VUE_APP_TENANT_DOMAIN=YOUR_DOMAIN
+VUE_APP_CRYPTR_TELEMETRY=FALSE
+```
+
+🛠️️ Open up the Profile Component in `src/views/Profile.vue` and modify the url request:
+
+```typescript
+<script>
+  import { getCryptrClient } from "../CryptrPlugin";
+    export default {
+    data() {
+      return {
+        courses: [],
+        errors: [],
+      };
+    },
+    created() {
+      const client = getCryptrClient();
+      console.log("created");
+      client
+        .decoratedRequest({
+          method: "GET",
+          // url: "http://localhost/api/v1/courses
+          // Add port 3000 for rails:
+          url: "http://localhost:3000/api/v1/courses",
+        })
+        .then((data) => {
+          console.log(data);
+          this.courses = data.data;
+        })
+        .catch((error) => {
+          console.error(error);
+          this.errors = [error];
+        });
+    },
+  };
+</script>
+```
+
+🛠️️ Run the vue server with `yarn serve` and try to connect. Your Vue application redirects you to your sign form page, where you can sign in or sign up with an email.
+
+__NOTE: You can log in with a sandbox email and we send you a magic link which should directly arrive in your personal inbox.__
+
+Once you're connected, click on "Protected route". You can now view the list of courses.
+
+It’s done, congratulations if you made it to the end!
+
+I hope this was helpful, and thanks for reading! 🙂
